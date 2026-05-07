@@ -62,12 +62,12 @@ def handle_client(connection):
         
         elif command == "RPUSH":
             listname = parsed[1]
-            value = parsed[2]
+            value = parsed[2:]
             if listname not in kv:
                 kv[listname] = []
             print(listname)
-            kv[listname].append(value) 
-            print(kv)
+            for v in value:
+                kv[listname].append(v) 
             length = len(kv[listname])
             response = f":{length}\r\n"
             connection.sendall(response.encode())
