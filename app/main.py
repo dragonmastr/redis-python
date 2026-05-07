@@ -1,5 +1,6 @@
 import socket  # noqa: F401
 import threading
+import time
 
 kv = {}
 def handle_client(connection):
@@ -12,33 +13,59 @@ def handle_client(connection):
         except Exception as e:
             print("Parser Error:", e)
             continue
-        print(parsed)
         command = parsed[0].upper()
         if command == "PING":
             connection.sendall(b"+PONG\r\n")
+
         elif command == "ECHO":
             message = parsed[1]
             response = f"${len(message)}\r\n{message}\r\n"
             connection.sendall(response.encode())
+
         elif command == "SET":
-            kv[parsed[1]] = parsed[2] 
+            key = parsed[1]
+            value = parsed[2]
+
+            entry = {
+                "value": value,
+                "expiry": None
+            }
+            if len(parsed) > 3:
+                expiry_type = parsed[3].upper()
+                current_time = time.time()
+                expiry_time = int(parsed[4])
+                if expiry_type == "EX":
+                    entry["expiry"] = expiry_time + current_time
+                elif expiry_type == "PX":
+                    entry["expiry"] = expiry_time/1000 + current_time
+            # we are storing the key value pair such that we have expiry in place
+            kv[key] = entry
             connection.sendall(b"+OK\r\n")
+
         elif command == "GET":
             key = parsed[1]
             if key in kv:
-                value = kv[key]
+                current_time = time.time()
+                expiry_time = kv[key]["expiry"] 
+                if expiry_time is None:
+                    value = kv[key]["value"]
+                    response = f"${len(value)}\r\n{value}\r\n"
+                    connection.sendall(response.encode())
+                if current_time > expiry_time:
+                    del kv[key]
+                    connection.sendall(b"$-1\r\n")
+                value = kv[key]["value"]
                 response = f"${len(value)}\r\n{value}\r\n"
                 connection.sendall(response.encode())
-            connection.sendall(b"$-1\r\n")
+            else:
+                connection.sendall(b"$-1\r\n")
 
 
 def parse_resp(data):
     parts = data.decode().split("\r\n")
-    print(parts)
     if not parts[0].startswith("*"):
         raise ValueError("Invalid RESP Array")
     element_count = int(parts[0][1:])
-    print(element_count)
     result = []
     index = 1
     for _ in range(element_count):
