@@ -1,12 +1,18 @@
 import socket  # noqa: F401
 import threading
 
+kv = {}
 def handle_client(connection):
     while True:
         data = connection.recv(1024)
         if not data:
             break
-        parsed = parse_resp(data)
+        try:
+            parsed = parse_resp(data)
+        except Exception as e:
+            print("Parser Error:", e)
+            continue
+        print(parsed)
         command = parsed[0].upper()
         if command == "PING":
             connection.sendall(b"+PONG\r\n")
@@ -14,6 +20,17 @@ def handle_client(connection):
             message = parsed[1]
             response = f"${len(message)}\r\n{message}\r\n"
             connection.sendall(response.encode())
+        elif command == "SET":
+            kv[parsed[1]] = parsed[2] 
+            connection.sendall(b"+OK\r\n")
+        elif command == "GET":
+            key = parsed[1]
+            if key in kv:
+                value = kv[key]
+                response = f"${len(value)}\r\n{value}\r\n"
+                connection.sendall(response.encode())
+            connection.sendall(b"$-1\r\n")
+
 
 def parse_resp(data):
     parts = data.decode().split("\r\n")
@@ -21,6 +38,7 @@ def parse_resp(data):
     if not parts[0].startswith("*"):
         raise ValueError("Invalid RESP Array")
     element_count = int(parts[0][1:])
+    print(element_count)
     result = []
     index = 1
     for _ in range(element_count):
